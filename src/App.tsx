@@ -1554,9 +1554,13 @@ function SessionRoomPage({
         } as DBMessage,
       ]);
 
-      // WebRTC: I was already in the room — create offer for the new joiner
-      if (part.name !== userName && localStreamRef.current && !peerConnectionRef.current) {
+      // WebRTC: Recreate offer for the new joiner (or rejoins)
+      if (part.name !== userName && localStreamRef.current) {
         try {
+          if (peerConnectionRef.current) {
+            peerConnectionRef.current.close();
+            peerConnectionRef.current = null;
+          }
           const pc = createPeerConnection();
           peerConnectionRef.current = pc;
           localStreamRef.current.getTracks().forEach((track) => {
