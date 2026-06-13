@@ -1764,7 +1764,7 @@ function SessionRoomPage({
   // Support Recording
   const startRecording = async () => {
     try {
-      let streamToRecord = localStream;
+      let streamToRecord = remoteStream || localStream;
       if (!streamToRecord) {
         try {
           streamToRecord = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });

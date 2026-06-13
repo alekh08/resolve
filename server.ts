@@ -672,6 +672,40 @@ app.get('/api/admin/logs', async (req: any, res: any) => {
   }
 });
 
+// --- Observability Metrics Endpoint ---
+app.get('/api/metrics', async (req: any, res: any) => {
+  try {
+    const activeSessions = await prisma.session.count({ where: { status: 'ACTIVE' } });
+    const completedSessions = await prisma.session.count({ where: { status: 'COMPLETED' } });
+    const totalParticipants = await prisma.participant.count();
+    
+    // Calculate a rough error rate based on ERROR event logs in the last hour
+    const oneHourAgo = new Date(Date.now() - 3600000);
+    const recentErrors = await prisma.eventLog.count({
+      where: { 
+        timestamp: { gte: oneHourAgo },
+        type: { in: ['ERROR', 'CONNECTION_FAILED', 'RECORDING_FAILED'] }
+      }
+    });
+
+    const metrics = {
+      timestamp: new Date().toISOString(),
+      uptime_seconds: process.uptime(),
+      memory_usage: process.memoryUsage(),
+      system: {
+        active_sessions_count: activeSessions,
+        completed_sessions_count: completedSessions,
+        total_participants_connected: totalParticipants,
+        error_rate_last_hour: recentErrors
+      }
+    };
+    
+    res.json(metrics);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Catch all fallback for routing in SPA
 if (process.env.NODE_ENV === 'production') {
   app.get('*', (req, res) => {
