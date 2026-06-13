@@ -1215,10 +1215,13 @@ function SessionRoomPage({
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const recordingTimerIntervalRef = useRef<any>(null);
   const [streamQuality, setStreamQuality] = useState<'EXCELLENT' | 'GOOD' | 'POOR'>('EXCELLENT');
+  const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
+  const [webrtcState, setWebrtcState] = useState<'idle' | 'connecting' | 'connected' | 'failed'>('idle');
 
   // Media Capture elements
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
+  const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
 
   // Sync ref with localStream changes
   const sessionRef = useRef<DBSession | null>(null);
@@ -1243,6 +1246,7 @@ function SessionRoomPage({
   }, [localStream, cameraOn, screenSharing, joined]);
 
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
+  const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const audioAnalyserRef = useRef<AnalyserNode | null>(null);
   const [audioLevel, setAudioLevel] = useState(0); // 0-100 gauge
@@ -1328,6 +1332,10 @@ function SessionRoomPage({
       }
       if (audioContextRef.current) {
         audioContextRef.current.close();
+      }
+      if (peerConnectionRef.current) {
+        peerConnectionRef.current.close();
+        peerConnectionRef.current = null;
       }
     };
   }, []);
@@ -1427,6 +1435,45 @@ function SessionRoomPage({
     }
   };
 
+  // ICE servers for WebRTC — STUN from Google + free TURN relays from OpenRelay
+  const ICE_SERVERS: RTCIceServer[] = [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: 'stun:stun2.l.google.com:19302' },
+    { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
+    { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
+    { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
+  ];
+
+  const createPeerConnection = () => {
+    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+
+    pc.onicecandidate = (event) => {
+      if (event.candidate && socketRef.current) {
+        socketRef.current.emit('webrtc-ice-candidate', { sessionId, candidate: event.candidate });
+      }
+    };
+
+    pc.ontrack = (event) => {
+      if (event.streams && event.streams[0]) {
+        setRemoteStream(event.streams[0]);
+        if (remoteVideoRef.current) {
+          remoteVideoRef.current.srcObject = event.streams[0];
+        }
+      }
+    };
+
+    pc.onconnectionstatechange = () => {
+      const state = pc.connectionState;
+      console.log('[WebRTC] Connection state:', state);
+      if (state === 'connected') setWebrtcState('connected');
+      else if (state === 'connecting' || state === 'new') setWebrtcState('connecting');
+      else if (state === 'failed' || state === 'disconnected') setWebrtcState('failed');
+    };
+
+    return pc;
+  };
+
   // Join the support call
   const handleJoinRoom = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1448,7 +1495,7 @@ function SessionRoomPage({
     // Populate current participant list locally
     setParticipants([{ id: `me-${Date.now()}`, name: userName, role: userRole }]);
 
-    socket.on('participant-joined', (part) => {
+    socket.on('participant-joined', async (part) => {
       setParticipants((prev) => {
         if (prev.find((p) => p.name === part.name)) return prev;
         return [...prev, part];
@@ -1466,6 +1513,23 @@ function SessionRoomPage({
           createdAt: new Date().toISOString(),
         } as DBMessage,
       ]);
+
+      // WebRTC: I was already in the room — create offer for the new joiner
+      if (part.name !== userName && localStreamRef.current && !peerConnectionRef.current) {
+        try {
+          const pc = createPeerConnection();
+          peerConnectionRef.current = pc;
+          localStreamRef.current.getTracks().forEach((track) => {
+            pc.addTrack(track, localStreamRef.current!);
+          });
+          setWebrtcState('connecting');
+          const offer = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: true });
+          await pc.setLocalDescription(offer);
+          socket.emit('webrtc-offer', { sessionId, offer });
+        } catch (err) {
+          console.error('[WebRTC] Offer creation failed:', err);
+        }
+      }
     });
 
     socket.on('participant-left', (part) => {
@@ -1533,6 +1597,50 @@ function SessionRoomPage({
         const targetHash = hasAgentToken ? '#/sessions' : (savedSessionDoc?.token ? `#/join/${savedSessionDoc.token}` : '#/login');
         window.location.hash = targetHash;
       }, 2500);
+    });
+
+    // --- WebRTC Signal Handlers ---
+    socket.on('webrtc-offer', async ({ offer }: { offer: RTCSessionDescriptionInit }) => {
+      try {
+        if (peerConnectionRef.current) {
+          peerConnectionRef.current.close();
+          peerConnectionRef.current = null;
+        }
+        const pc = createPeerConnection();
+        peerConnectionRef.current = pc;
+        if (localStreamRef.current) {
+          localStreamRef.current.getTracks().forEach((track) => {
+            pc.addTrack(track, localStreamRef.current!);
+          });
+        }
+        setWebrtcState('connecting');
+        await pc.setRemoteDescription(new RTCSessionDescription(offer));
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        socket.emit('webrtc-answer', { sessionId, answer });
+      } catch (err) {
+        console.error('[WebRTC] Failed to handle offer:', err);
+      }
+    });
+
+    socket.on('webrtc-answer', async ({ answer }: { answer: RTCSessionDescriptionInit }) => {
+      try {
+        if (peerConnectionRef.current) {
+          await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(answer));
+        }
+      } catch (err) {
+        console.error('[WebRTC] Failed to handle answer:', err);
+      }
+    });
+
+    socket.on('webrtc-ice-candidate', async ({ candidate }: { candidate: RTCIceCandidateInit }) => {
+      try {
+        if (peerConnectionRef.current && candidate) {
+          await peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(candidate));
+        }
+      } catch (err) {
+        console.error('[WebRTC] Failed to add ICE candidate:', err);
+      }
     });
 
     // Refresh messages archive
@@ -1812,6 +1920,12 @@ function SessionRoomPage({
 
   // Hang-up and leave session cleanly for this individual client (leaves, but preserves session status)
   const handleLeaveCall = async () => {
+    if (peerConnectionRef.current) {
+      peerConnectionRef.current.close();
+      peerConnectionRef.current = null;
+    }
+    setRemoteStream(null);
+    setWebrtcState('idle');
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach((track) => track.stop());
     }
@@ -1834,8 +1948,18 @@ function SessionRoomPage({
   // End support session call completely for ALL participants
   const handleEndSession = async () => {
     try {
-      await fetch(`/api/sessions/${sessionId}/end`, { method: 'POST' });
-      
+      const token = localStorage.getItem('resolve_token');
+      await fetch(`/api/sessions/${sessionId}/end`, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+
+      if (peerConnectionRef.current) {
+        peerConnectionRef.current.close();
+        peerConnectionRef.current = null;
+      }
+      setRemoteStream(null);
+      setWebrtcState('idle');
       if (localStreamRef.current) {
         localStreamRef.current.getTracks().forEach((track) => track.stop());
       }
@@ -1850,7 +1974,6 @@ function SessionRoomPage({
 
       setGlobalSuccess('The session call was cleanly ended and terminated.');
 
-      const token = localStorage.getItem('resolve_token');
       const hasAgentToken = !!token;
       const savedSessionDoc = sessionRef.current;
       const targetHash = hasAgentToken ? '#/sessions' : (savedSessionDoc?.token ? `#/join/${savedSessionDoc.token}` : '#/login');
@@ -2022,37 +2145,51 @@ function SessionRoomPage({
                   </div>
                 </div>
 
-                {/* Simulated Customer/Agent Remote box */}
+                {/* Remote Participant — Real WebRTC Video Stream */}
                 <div className="bg-stone-900 border border-stone-800 rounded-xl overflow-hidden relative flex items-center justify-center shadow">
-                  {participants.length < 2 ? (
-                    <div className="text-slate-500 text-center space-y-2 p-4">
-                      <div className="w-4 h-4 border-2 border-slate-500 border-t-white rounded-full animate-spin mx-auto"></div>
-                      <p className="text-xs font-semibold text-slate-400">Waiting for other participant to join...</p>
-                      <p className="text-[10px] text-slate-500 font-medium">Invitation links can be shared at any time.</p>
-                    </div>
-                  ) : (
-                    <>
-                      {/* Active simulation stream */}
-                      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-stone-800 to-stone-950 flex flex-col items-center justify-center p-6 text-center space-y-3">
-                        <div className="w-20 h-20 bg-emerald-500/10 rounded-full border border-emerald-500/35 flex items-center justify-center animate-pulse">
-                          <User className="w-10 h-10 text-emerald-400" />
-                        </div>
-                        <div className="space-y-0.5">
-                          <p className="text-slate-200 font-bold text-sm">
-                            {participants.find((p) => p.name !== userName)?.name || 'Guest Participant'}
-                          </p>
-                          <p className="text-slate-500 text-xs font-semibold uppercase tracking-wider">
-                            {participants.find((p) => p.name !== userName)?.role || 'CUSTOMER'}
-                          </p>
-                        </div>
+                  {/* Real remote video — shown once stream is received */}
+                  <video
+                    ref={remoteVideoRef}
+                    autoPlay
+                    playsInline
+                    className={`w-full h-full object-cover ${remoteStream ? 'block' : 'hidden'}`}
+                  />
 
-                        {/* Connection indicator */}
-                        <div className="flex items-center gap-1 text-[10px] text-emerald-500 font-bold bg-emerald-500/5 py-1 px-3 border border-emerald-500/15 rounded-full">
-                          <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-ping"></span>
-                          AUDIO/VIDEO ACTIVE
-                        </div>
-                      </div>
-                    </>
+                  {/* Overlay: waiting / connecting / avatar placeholder */}
+                  {!remoteStream && (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center p-4 text-center space-y-3">
+                      {participants.length < 2 ? (
+                        <>
+                          <div className="w-4 h-4 border-2 border-slate-500 border-t-white rounded-full animate-spin mx-auto"></div>
+                          <p className="text-xs font-semibold text-slate-400">Waiting for other participant to join...</p>
+                          <p className="text-[10px] text-slate-500 font-medium">Invitation links can be shared at any time.</p>
+                        </>
+                      ) : (
+                        <>
+                          <div className="w-20 h-20 bg-emerald-500/10 rounded-full border border-emerald-500/35 flex items-center justify-center">
+                            <User className="w-10 h-10 text-emerald-400" />
+                          </div>
+                          <div className="space-y-0.5">
+                            <p className="text-slate-200 font-bold text-sm">
+                              {participants.find((p) => p.name !== userName)?.name || 'Participant'}
+                            </p>
+                            <p className="text-slate-500 text-xs font-semibold uppercase tracking-wider">
+                              {participants.find((p) => p.name !== userName)?.role || 'CUSTOMER'}
+                            </p>
+                          </div>
+                          <div className={`flex items-center gap-1.5 text-[10px] font-bold py-1 px-3 border rounded-full ${
+                            webrtcState === 'connected' ? 'text-emerald-400 bg-emerald-500/5 border-emerald-500/20' :
+                            webrtcState === 'failed' ? 'text-red-400 bg-red-500/5 border-red-500/20 animate-pulse' :
+                            'text-amber-400 bg-amber-500/5 border-amber-500/20 animate-pulse'
+                          }`}>
+                            <span className="w-1.5 h-1.5 rounded-full bg-current"></span>
+                            {webrtcState === 'connected' ? 'VIDEO ACTIVE' :
+                             webrtcState === 'failed' ? 'CONNECTION FAILED — RETRY' :
+                             webrtcState === 'connecting' ? 'ESTABLISHING VIDEO...' : 'WAITING FOR VIDEO...'}
+                          </div>
+                        </>
+                      )}
+                    </div>
                   )}
 
                   <div className="absolute bottom-3 left-3 bg-stone-950/80 backdrop-blur-sm text-[10px] font-bold text-slate-200 py-1 px-2.5 rounded-md border border-stone-800 flex items-center gap-2">
@@ -2772,7 +2909,9 @@ function RecordingsPage({
 
   const fetchRecordings = async () => {
     try {
-      const res = await fetch('/api/recordings');
+      const res = await fetch('/api/recordings', {
+        headers: { Authorization: `Bearer ${localStorage.getItem('resolve_token')}` },
+      });
       const data = await res.json();
       if (Array.isArray(data)) {
         setRecordings(data);

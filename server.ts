@@ -276,7 +276,7 @@ app.get('/api/join/:token', async (req: any, res: any) => {
 });
 
 // Force end session API
-app.post('/api/sessions/:id/end', async (req: any, res: any) => {
+app.post('/api/sessions/:id/end', authenticateJWT, async (req: any, res: any) => {
   const { id } = req.params;
   try {
     const session = await prisma.session.findUnique({ where: { id } });
@@ -463,22 +463,9 @@ const serializeRecording = (rec: any) => {
   };
 };
 
-app.post('/api/sessions/:id/record/start', async (req: any, res: any) => {
+app.post('/api/sessions/:id/record/start', authenticateJWT, async (req: any, res: any) => {
   const { id } = req.params;
-  let uploadedBy = 'agent@resolve.com';
-  
-  const authHeader = req.headers.authorization;
-  if (authHeader) {
-    try {
-      const token = authHeader.split(' ')[1];
-      const decoded: any = jwt.verify(token, JWT_SECRET);
-      if (decoded && decoded.email) {
-        uploadedBy = decoded.email;
-      }
-    } catch (e) {
-      // Optional JWT decoding
-    }
-  }
+  const uploadedBy = req.user?.email || 'agent@resolve.com';
 
   try {
     // End any current active recordings in this session
@@ -512,7 +499,7 @@ app.post('/api/sessions/:id/record/start', async (req: any, res: any) => {
   }
 });
 
-app.post('/api/sessions/:id/record/stop', async (req: any, res: any) => {
+app.post('/api/sessions/:id/record/stop', authenticateJWT, async (req: any, res: any) => {
   const { id } = req.params;
   try {
     const activeRecs = await prisma.recording.findMany({
@@ -623,7 +610,7 @@ app.post('/api/sessions/:id/record/upload', uploadRecording.single('video'), asy
   }
 });
 
-app.get('/api/recordings', async (req: any, res: any) => {
+app.get('/api/recordings', authenticateJWT, async (req: any, res: any) => {
   try {
     const recordings = await prisma.recording.findMany({
       orderBy: { startedAt: 'desc' },
@@ -667,6 +654,9 @@ if (process.env.NODE_ENV === 'production') {
 }
 
 // --- SOCKET.IO REALTIME EVENT HANDLERS ---
+// Reconnect grace window tracker: key = `${sessionId}:${name}`
+const reconnectTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
+
 io.on('connection', (socket) => {
   let currentRoomId: string | null = null;
   let participantDetails: { name: string; role: string; id: string } | null = null;
@@ -678,26 +668,35 @@ io.on('connection', (socket) => {
     const partId = userId || `part-${Math.random().toString(36).substring(2, 9)}`;
     participantDetails = { name, role, id: partId };
 
+    // 30s reconnect grace window: silently rejoin if within the window
+    const reconnectKey = `${sessionId}:${name}`;
+    if (reconnectTimeouts.has(reconnectKey)) {
+      clearTimeout(reconnectTimeouts.get(reconnectKey)!);
+      reconnectTimeouts.delete(reconnectKey);
+      console.log(`📡 [Socket] ${name} reconnected within grace window — silent rejoin`);
+      return;
+    }
+
     console.log(`📡 [Socket] ${role} (${name}) joined room: ${sessionId}`);
 
     try {
-      // Create participant log & database record
-      await prisma.participant.create({
-        data: {
-          sessionId,
-          role,
-          name,
-          joinedAt: new Date(),
-        },
+      // Dedup: skip DB insert if same participant joined within last 60 seconds
+      const recentJoin = await prisma.participant.findFirst({
+        where: { sessionId, name, joinedAt: { gte: new Date(Date.now() - 60000) } },
       });
 
-      await prisma.eventLog.create({
-        data: {
-          sessionId,
-          type: 'PARTICIPANT_JOINED',
-          detail: `Participant ${name} (${role}) joined the session.`,
-        },
-      });
+      if (!recentJoin) {
+        await prisma.participant.create({
+          data: { sessionId, role, name, joinedAt: new Date() },
+        });
+        await prisma.eventLog.create({
+          data: {
+            sessionId,
+            type: 'PARTICIPANT_JOINED',
+            detail: `Participant ${name} (${role}) joined the session.`,
+          },
+        });
+      }
 
       // Update session status to ACTIVE when customer joins
       if (role === 'CUSTOMER') {
@@ -710,7 +709,7 @@ io.on('connection', (socket) => {
         }
       }
 
-      // Tell other users in the room
+      // Notify all participants in the room
       io.to(sessionId).emit('participant-joined', {
         id: partId,
         name,
@@ -718,7 +717,7 @@ io.on('connection', (socket) => {
         timestamp: new Date(),
       });
     } catch (e) {
-      console.error('Participant creation log failed:', e);
+      console.error('Participant join error:', e);
     }
   });
 
@@ -748,30 +747,46 @@ io.on('connection', (socket) => {
     io.to(sessionId).emit('screen-share-updated', { sharing, userName, role });
   });
 
-  socket.on('disconnect', async () => {
+  socket.on('disconnect', () => {
     if (currentRoomId && participantDetails) {
       const { name, role } = participantDetails;
-      console.log(`📡 [Socket] ${role} (${name}) left room: ${currentRoomId}`);
+      const roomId = currentRoomId;
+      console.log(`📡 [Socket] ${role} (${name}) disconnected — 30s grace window started`);
 
-      try {
-        await prisma.eventLog.create({
-          data: {
-            sessionId: currentRoomId,
-            type: 'PARTICIPANT_LEFT',
-            detail: `Participant ${name} (${role}) disconnected.`,
-          },
-        });
+      // 30-second reconnect grace window before logging departure
+      const reconnectKey = `${roomId}:${name}`;
+      const timeout = setTimeout(async () => {
+        reconnectTimeouts.delete(reconnectKey);
+        try {
+          await prisma.eventLog.create({
+            data: {
+              sessionId: roomId,
+              type: 'PARTICIPANT_LEFT',
+              detail: `Participant ${name} (${role}) disconnected.`,
+            },
+          });
+          io.to(roomId).emit('participant-left', { name, role, timestamp: new Date() });
+        } catch (e) {
+          console.error('Log participant left error:', e);
+        }
+      }, 30000);
 
-        // Broadcast participant left
-        io.to(currentRoomId).emit('participant-left', {
-          name,
-          role,
-          timestamp: new Date(),
-        });
-      } catch (e) {
-        console.error('Log participant left error:', e);
-      }
+      reconnectTimeouts.set(reconnectKey, timeout);
     }
+  });
+
+  // --- WEBRTC SIGNALING RELAY ---
+  // Forwards offers/answers/ICE candidates between participants via server
+  socket.on('webrtc-offer', ({ sessionId, offer }: { sessionId: string; offer: any }) => {
+    socket.to(sessionId).emit('webrtc-offer', { offer });
+  });
+
+  socket.on('webrtc-answer', ({ sessionId, answer }: { sessionId: string; answer: any }) => {
+    socket.to(sessionId).emit('webrtc-answer', { answer });
+  });
+
+  socket.on('webrtc-ice-candidate', ({ sessionId, candidate }: { sessionId: string; candidate: any }) => {
+    socket.to(sessionId).emit('webrtc-ice-candidate', { candidate });
   });
 });
 
