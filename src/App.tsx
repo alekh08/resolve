@@ -1793,16 +1793,14 @@ function SessionRoomPage({
       setRecordingSeconds(0);
 
       if (streamToRecord) {
-        let options = { mimeType: 'video/webm;codecs=vp9,opus' };
-        if (!MediaRecorder.isTypeSupported(options.mimeType)) {
-          options = { mimeType: 'video/webm;codecs=vp8,opus' };
-        }
-        if (!MediaRecorder.isTypeSupported(options.mimeType)) {
-          options = { mimeType: 'video/webm' };
-        }
-        if (!MediaRecorder.isTypeSupported(options.mimeType)) {
-          options = { mimeType: '' }; // Fallback to browser default
-        }
+        // Pick best supported codec — explicit bitrate caps to keep file sizes small
+        const codecOptions = [
+          { mimeType: 'video/webm;codecs=vp9,opus', videoBitsPerSecond: 500_000, audioBitsPerSecond: 48_000 },
+          { mimeType: 'video/webm;codecs=vp8,opus', videoBitsPerSecond: 500_000, audioBitsPerSecond: 48_000 },
+          { mimeType: 'video/webm', videoBitsPerSecond: 500_000, audioBitsPerSecond: 48_000 },
+          { mimeType: '' }, // browser default as last resort
+        ];
+        const options = codecOptions.find((o) => !o.mimeType || MediaRecorder.isTypeSupported(o.mimeType)) || {};
 
         const recorder = new MediaRecorder(streamToRecord, options);
         recorder.ondataavailable = (event) => {
@@ -3015,31 +3013,32 @@ function RecordingsPage({
               </div>
 
               <div className="w-full md:w-auto self-stretch flex items-center md:justify-end">
-                {rec.status?.toUpperCase() === 'READY' ? (
-                  <button
-                    onClick={() => {
-                      if (rec.downloadUrl || rec.download_url) {
-                        const a = document.createElement('a');
-                        a.href = rec.downloadUrl || rec.download_url;
-                        a.download = rec.fileName || rec.filename || `recording-${rec.id}.webm`;
-                        a.click();
-                        setGlobalSuccess('Requesting transmission download of recorded browser video tape.');
-                      } else {
-                        const content = `RESOLVE SECURE REMOTE ASSISTANCE - CALL RECORDING LOG\n=======================================================\nSession ID: ${rec.sessionId}\nRecording ID: ${rec.id}\nDuration: ${rec.durationSec || 0} seconds\nStatus: ${rec.status || 'Ready'}\n\n[NOTE] This is a pre-seeded or processed mock database entry. Real video/audio recordings require active client MediaRecorder sessions and a browser microphone/camera stream.\n\nTo play real browser-recorded .webm files on Windows:\n1. Drag and drop the downloaded .webm file into any modern web browser (Google Chrome, Microsoft Edge, Mozilla Firefox).\n2. Alternatively, use a free open-source media player like VLC Media Player which natively supports WebM codecs.`;
-                        const blob = new Blob([content], { type: 'text/plain' });
-                        const url = URL.createObjectURL(blob);
-                        const a = document.createElement('a');
-                        a.href = url;
-                        a.download = `recording-details-${rec.sessionId}.txt`;
-                        a.click();
-                        setGlobalSuccess('Downloaded call recording details log document.');
-                      }
-                    }}
-                    className="w-full md:w-auto bg-stone-900 hover:bg-stone-850 text-white font-extrabold py-2.5 px-4 rounded-lg text-xs tracking-normal shadow transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-                  >
-                    <Download className="w-4 h-4" />
-                    Download call recording
-                  </button>
+                {rec.status?.toUpperCase() === 'READY' && (rec.downloadUrl || rec.download_url) ? (
+                  <div className="flex flex-col gap-2 w-full md:w-64">
+                    {/* In-browser video preview */}
+                    <video
+                      src={rec.downloadUrl || rec.download_url}
+                      controls
+                      className="w-full rounded-lg border border-slate-200 bg-black"
+                      style={{ maxHeight: '140px' }}
+                    />
+                    {/* Download button */}
+                    <a
+                      href={rec.downloadUrl || rec.download_url}
+                      download={rec.fileName || rec.filename || `recording-${rec.id}.webm`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-full bg-stone-900 hover:bg-stone-700 text-white font-extrabold py-2 px-4 rounded-lg text-xs tracking-normal shadow transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                      onClick={() => setGlobalSuccess('Downloading recording from Supabase Storage...')}
+                    >
+                      <Download className="w-4 h-4" />
+                      Download Recording
+                    </a>
+                  </div>
+                ) : rec.status?.toUpperCase() === 'READY' ? (
+                  <div className="w-full md:w-auto text-xs py-2 px-4 bg-slate-50 text-slate-400 border border-slate-150 rounded-lg text-center font-bold">
+                    ⚙️ No file URL available
+                  </div>
                 ) : (
                   <div className="w-full md:w-auto text-xs py-2 px-4 bg-slate-50 text-slate-400 border border-slate-150 rounded-lg text-center font-bold">
                     ⚙️ Processing Tape Footages

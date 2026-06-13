@@ -8,6 +8,7 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import dotenv from 'dotenv';
+import { createClient } from '@supabase/supabase-js';
 import { AccessToken } from 'livekit-server-sdk';
 
 dotenv.config();
@@ -24,6 +25,14 @@ const io = new Server(httpServer, {
 const prisma = new PrismaClient();
 const PORT = process.env.PORT || 5000;
 const JWT_SECRET = process.env.JWT_SECRET || 'resolve-hackathon-token-secret';
+
+// Supabase admin client for Storage uploads
+const supabaseAdmin = createClient(
+  process.env.SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  { auth: { persistSession: false } }
+);
+const RECORDINGS_BUCKET = 'recordings';
 
 // Ensure uploads folder exists
 const uploadsDir = path.join(process.cwd(), 'uploads');
@@ -423,20 +432,10 @@ if (!fs.existsSync(recordingsDir)) {
   fs.mkdirSync(recordingsDir, { recursive: true });
 }
 
-// Multer storage for browser-native video/audio uploads
-const recordingsStorage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, recordingsDir);
-  },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
-    cb(null, 'rec-' + uniqueSuffix + (path.extname(file.originalname) || '.webm'));
-  },
-});
-
+// Multer: memory storage for recordings (streamed directly to Supabase Storage)
 const uploadRecording = multer({
-  storage: recordingsStorage,
-  limits: { fileSize: 250 * 1024 * 1024 }, // 250MB limit
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 500 * 1024 * 1024 }, // 500MB safety cap
 });
 
 const serializeRecording = (rec: any) => {
@@ -542,7 +541,7 @@ app.post('/api/sessions/:id/record/stop', authenticateJWT, async (req: any, res:
   }
 });
 
-// Upload the recorded media blob from the agent browser directly
+// Upload the recorded media blob from the agent browser directly to Supabase Storage
 app.post('/api/sessions/:id/record/upload', uploadRecording.single('video'), async (req: any, res: any) => {
   const { id } = req.params;
   const { durationSec } = req.body;
@@ -552,7 +551,33 @@ app.post('/api/sessions/:id/record/upload', uploadRecording.single('video'), asy
       return res.status(400).json({ error: 'No video recording file provided.' });
     }
 
-    // Locate the active Processing or Recording log
+    // Unique file path inside Supabase Storage bucket
+    const uniqueName = `${id}/${Date.now()}.webm`;
+    const fileBuffer = file.buffer;
+    const fileSizeBytes = fileBuffer.length;
+
+    // Upload to Supabase Storage
+    const { error: uploadError } = await supabaseAdmin.storage
+      .from(RECORDINGS_BUCKET)
+      .upload(uniqueName, fileBuffer, {
+        contentType: 'video/webm',
+        upsert: false,
+      });
+
+    if (uploadError) {
+      console.error('Supabase Storage upload error:', uploadError);
+      return res.status(500).json({ error: 'Failed to upload to Supabase Storage: ' + uploadError.message });
+    }
+
+    // Get public URL from Supabase Storage
+    const { data: urlData } = supabaseAdmin.storage
+      .from(RECORDINGS_BUCKET)
+      .getPublicUrl(uniqueName);
+
+    const publicUrl = urlData.publicUrl;
+    const fileName = uniqueName.split('/').pop()!;
+
+    // Locate the active Processing or Recording DB log
     let recording = await prisma.recording.findFirst({
       where: { sessionId: id, status: { in: ['Processing', 'Recording'] } },
       orderBy: { startedAt: 'desc' },
@@ -560,10 +585,11 @@ app.post('/api/sessions/:id/record/upload', uploadRecording.single('video'), asy
 
     const isDirect = !recording;
     const endedAt = new Date();
-    const fileName = file.filename;
-    const fileSize = file.size;
-    const downloadUrl = `/uploads/recordings/${fileName}`;
-    const finalDuration = durationSec ? parseInt(durationSec, 10) : (recording ? Math.round((endedAt.getTime() - recording.startedAt.getTime()) / 1000) : 10);
+    const finalDuration = durationSec
+      ? parseInt(durationSec, 10)
+      : recording
+      ? Math.round((endedAt.getTime() - recording.startedAt.getTime()) / 1000)
+      : 10;
 
     if (isDirect) {
       recording = await prisma.recording.create({
@@ -574,8 +600,8 @@ app.post('/api/sessions/:id/record/upload', uploadRecording.single('video'), asy
           endedAt,
           durationSec: finalDuration,
           fileName,
-          fileSize,
-          downloadUrl,
+          fileSize: fileSizeBytes,
+          downloadUrl: publicUrl,
           uploadedBy: 'agent@resolve.com',
         },
       });
@@ -587,8 +613,8 @@ app.post('/api/sessions/:id/record/upload', uploadRecording.single('video'), asy
           endedAt,
           durationSec: finalDuration,
           fileName,
-          fileSize,
-          downloadUrl,
+          fileSize: fileSizeBytes,
+          downloadUrl: publicUrl,
         },
       });
     }
@@ -597,15 +623,15 @@ app.post('/api/sessions/:id/record/upload', uploadRecording.single('video'), asy
       data: {
         sessionId: id,
         type: 'RECORDING_UPLOADED',
-        detail: `Browser recorded file received. Saved payload: ${fileName} (${(fileSize / (1024 * 1024)).toFixed(2)} MB). Status set to Ready.`,
+        detail: `Recording uploaded to Supabase Storage: ${uniqueName} (${(fileSizeBytes / (1024 * 1024)).toFixed(2)} MB). Status: Ready.`,
       },
     });
 
-    io.to(id).emit('recording-update', { status: 'Ready', downloadUrl });
+    io.to(id).emit('recording-update', { status: 'Ready', downloadUrl: publicUrl });
 
     res.json(serializeRecording(recording));
   } catch (error: any) {
-    console.error('Error uploading browser recording:', error);
+    console.error('Error uploading recording to Supabase:', error);
     res.status(500).json({ error: error.message });
   }
 });
