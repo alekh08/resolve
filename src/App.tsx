@@ -2152,7 +2152,7 @@ function SessionRoomPage({
                     autoPlay
                     playsInline
                     disablePictureInPicture
-                    className={`w-full h-full object-cover ${remoteStream ? 'block' : 'hidden'}`}
+                    className={`w-full h-full object-contain ${remoteStream ? 'block' : 'hidden'}`}
                   />
                   {!remoteStream && (
                     <div className="absolute inset-0 flex flex-col items-center justify-center p-4 text-center space-y-4 bg-stone-900">
