@@ -27,7 +27,8 @@ import {
   AlertTriangle,
   History,
   Activity,
-  Users
+  Users,
+  SwitchCamera
 } from 'lucide-react';
 import { io, Socket } from 'socket.io-client';
 
@@ -1206,8 +1207,9 @@ function SessionRoomPage({
   const [joined, setJoined] = useState(false);
 
   // Call stream elements states
-  const [cameraOn, setCameraOn] = useState(true);
   const [micOn, setMicOn] = useState(true);
+  const [cameraOn, setCameraOn] = useState(true);
+  const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user');
   const [screenSharing, setScreenSharing] = useState(false);
   const [recording, setRecording] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -1341,21 +1343,37 @@ function SessionRoomPage({
   }, []);
 
   // Trigger Local Media Capture
-  const startCamera = async () => {
+  const startCamera = async (mode: 'user' | 'environment' = facingMode) => {
     try {
-      if (localStream) {
-        localStream.getTracks().forEach((track) => track.stop());
+      if (localStreamRef.current) {
+        localStreamRef.current.getTracks().forEach((track) => track.stop());
       }
 
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: true,
+        video: { facingMode: mode },
         audio: true
       });
 
       setLocalStream(stream);
+      localStreamRef.current = stream; // Keep ref in sync immediately
 
       if (localVideoRef.current) {
         localVideoRef.current.srcObject = stream;
+      }
+
+      // Update WebRTC peer connection if active
+      if (peerConnectionRef.current) {
+        const videoTrack = stream.getVideoTracks()[0];
+        const sender = peerConnectionRef.current.getSenders().find((s) => s.track?.kind === 'video');
+        if (sender && videoTrack) {
+          sender.replaceTrack(videoTrack);
+        }
+        
+        const audioTrack = stream.getAudioTracks()[0];
+        const audioSender = peerConnectionRef.current.getSenders().find((s) => s.track?.kind === 'audio');
+        if (audioSender && audioTrack) {
+          audioSender.replaceTrack(audioTrack);
+        }
       }
 
       // Audio Monitoring analysis
@@ -1412,6 +1430,12 @@ function SessionRoomPage({
         setCameraOn(false);
       }
     }
+  };
+
+  const handleSwitchCamera = async () => {
+    const newMode = facingMode === 'user' ? 'environment' : 'user';
+    setFacingMode(newMode);
+    await startCamera(newMode);
   };
 
   const toggleMic = async () => {
@@ -2229,6 +2253,15 @@ function SessionRoomPage({
                 title={cameraOn ? 'Turn Video Off' : 'Turn Video On'}
               >
                 {cameraOn ? <Video className="w-5 h-5" /> : <VideoOff className="w-5 h-5" />}
+              </button>
+
+              <button
+                onClick={handleSwitchCamera}
+                className="w-10 h-10 rounded-lg flex items-center justify-center transition-all bg-stone-850 hover:bg-stone-800 text-slate-300 border border-stone-800"
+                id="btn-switch-camera"
+                title="Switch Camera (Front/Back)"
+              >
+                <SwitchCamera className="w-5 h-5" />
               </button>
 
               <button
