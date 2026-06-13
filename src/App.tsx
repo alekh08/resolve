@@ -28,7 +28,9 @@ import {
   History,
   Activity,
   Users,
-  SwitchCamera
+  SwitchCamera,
+  Maximize,
+  Minimize
 } from 'lucide-react';
 import { io, Socket } from 'socket.io-client';
 
@@ -1248,8 +1250,11 @@ function SessionRoomPage({
   }, [localStream, cameraOn, screenSharing, joined]);
 
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
-  const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
+  const remoteVideoRef = useRef<HTMLVideoElement>(null);
+  const videoContainerRef = useRef<HTMLDivElement>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
+  
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const audioAnalyserRef = useRef<AnalyserNode | null>(null);
   const [audioLevel, setAudioLevel] = useState(0); // 0-100 gauge
 
@@ -1980,6 +1985,9 @@ function SessionRoomPage({
         peerConnectionRef.current.close();
         peerConnectionRef.current = null;
       }
+      if (document.fullscreenElement && document.exitFullscreen) {
+        document.exitFullscreen().catch(() => {});
+      }
       setRemoteStream(null);
       setWebrtcState('idle');
       if (localStreamRef.current) {
@@ -2116,7 +2124,7 @@ function SessionRoomPage({
         </div>
 
         {/* Video Canvas / Grid Area */}
-        <div className="flex-1 bg-stone-950 border border-stone-850 rounded-2xl relative overflow-hidden flex flex-col min-h-[500px] lg:min-h-[380px] justify-stretch">
+        <div ref={videoContainerRef} className="flex-1 bg-stone-950 border border-stone-850 rounded-2xl relative overflow-hidden flex flex-col min-h-[500px] lg:min-h-[380px] justify-stretch">
           
           {/* Main stream box - Screen Share Mode vs Grid view */}
           <div className="flex-1 relative flex items-center justify-center">
@@ -2127,6 +2135,7 @@ function SessionRoomPage({
                   autoPlay
                   playsInline
                   muted
+                  disablePictureInPicture
                   style={{ transform: 'none' }}
                   className="w-full h-full object-contain"
                 />
@@ -2142,6 +2151,7 @@ function SessionRoomPage({
                     ref={remoteVideoRef}
                     autoPlay
                     playsInline
+                    disablePictureInPicture
                     className={`w-full h-full object-cover ${remoteStream ? 'block' : 'hidden'}`}
                   />
                   {!remoteStream && (
@@ -2196,6 +2206,7 @@ function SessionRoomPage({
                     autoPlay
                     playsInline
                     muted
+                    disablePictureInPicture
                     className={`w-full h-full object-cover scale-x-[-1] ${cameraOn ? 'block' : 'hidden'}`}
                   />
                   {!cameraOn && (
@@ -2254,6 +2265,28 @@ function SessionRoomPage({
                 title="Switch Camera (Front/Back)"
               >
                 <SwitchCamera className="w-5 h-5" />
+              </button>
+
+              <button
+                onClick={() => {
+                  if (!document.fullscreenElement) {
+                    if (videoContainerRef.current) {
+                      videoContainerRef.current.requestFullscreen().catch(err => {
+                        setGlobalError(`Error enabling fullscreen: ${err.message}`);
+                      });
+                    }
+                  } else {
+                    if (document.exitFullscreen) {
+                      document.exitFullscreen();
+                    }
+                  }
+                }}
+                className={`w-10 h-10 rounded-lg flex items-center justify-center transition-all ${
+                  isFullscreen ? 'bg-stone-700 hover:bg-stone-600 text-white' : 'bg-stone-850 hover:bg-stone-800 text-slate-300 border border-stone-800'
+                }`}
+                title="Toggle Fullscreen"
+              >
+                {isFullscreen ? <Minimize className="w-5 h-5" /> : <Maximize className="w-5 h-5" />}
               </button>
 
               <button
