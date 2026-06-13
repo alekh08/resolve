@@ -2190,7 +2190,7 @@ function SessionRoomPage({
                     </div>
                   )}
                   {/* Remote Participant Label */}
-                  <div className="absolute bottom-4 left-4 bg-stone-950/80 backdrop-blur-sm text-xs font-bold text-slate-200 py-1.5 px-3 rounded-lg border border-stone-800 flex items-center gap-2 z-10">
+                  <div className="absolute top-4 left-4 bg-stone-950/80 backdrop-blur-sm text-xs font-bold text-slate-200 py-1.5 px-3 rounded-lg border border-stone-800 flex items-center gap-2 z-10">
                     <User className="w-3.5 h-3.5 text-slate-400" />
                     <span>{participants.find((p) => p.name !== userName)?.name || 'Remote Participant'}</span>
                     <span className="bg-stone-800 text-slate-400 px-1.5 py-0.5 rounded font-black uppercase text-[9px] tracking-wider">
