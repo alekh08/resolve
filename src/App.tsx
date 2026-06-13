@@ -405,8 +405,8 @@ function LoginPage({
   setGlobalError: (err: string | null) => void;
   setGlobalSuccess: (sc: string | null) => void;
 }) {
-  const [email, setEmail] = useState('agent@resolve.com');
-  const [password, setPassword] = useState('password123');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
   // Customer states
@@ -561,13 +561,7 @@ function LoginPage({
             </form>
           </div>
 
-          <div className="mt-8 pt-5 border-t border-slate-100 text-center">
-            <span className="text-xs font-semibold text-slate-400 uppercase tracking-widest bg-slate-100 px-3 py-1 rounded-full">AtomQuest Demo Accounts</span>
-            <p className="text-xs text-slate-500 font-medium mt-3">
-              Use email: <strong className="text-stone-900">agent@resolve.com</strong><br />
-              Password: <strong className="text-stone-900">password123</strong>
-            </p>
-          </div>
+          {/* Removed demo hints */}
         </div>
 
         {/* Customer Join Card (Right) */}
