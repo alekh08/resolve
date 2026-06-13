@@ -508,7 +508,23 @@ function LoginPage({
   };
 
   return (
-    <div className="flex-1 flex items-center justify-center py-12">
+    <div className="flex-1 flex flex-col items-center justify-center py-12">
+      
+      {/* Hackathon Demo Video Banner */}
+      <div className="max-w-4xl w-full mb-8 px-4 sm:px-0">
+        <a 
+          href="https://drive.google.com/file/d/1tS4NXhVa8ooH1xW5CQmGBLfE-DylFn3d/view?usp=sharing" 
+          target="_blank" 
+          rel="noreferrer"
+          className="block w-full bg-stone-900 border border-emerald-500 text-white px-6 py-4 rounded-xl text-center shadow-lg hover:bg-stone-800 hover:border-emerald-400 transition-all group"
+        >
+          <span className="font-bold text-lg flex items-center justify-center gap-2 group-hover:text-emerald-400 transition-colors">
+            🎥 Watch the Full Demo Video
+          </span>
+          <span className="text-sm text-slate-400 mt-1 block">Click here to view the recorded project walkthrough on Google Drive</span>
+        </a>
+      </div>
+
       <div className="max-w-4xl w-full grid grid-cols-1 md:grid-cols-2 gap-8" id="login-container">
         
         {/* Support Agent Card (Left) */}
