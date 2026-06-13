@@ -2116,7 +2116,7 @@ function SessionRoomPage({
         </div>
 
         {/* Video Canvas / Grid Area */}
-        <div className="flex-1 bg-stone-950 border border-stone-850 rounded-2xl relative overflow-hidden aspect-video flex flex-col min-h-[380px] justify-stretch">
+        <div className="flex-1 bg-stone-950 border border-stone-850 rounded-2xl relative overflow-hidden flex flex-col min-h-[500px] lg:min-h-[380px] justify-stretch">
           
           {/* Main stream box - Screen Share Mode vs Grid view */}
           <div className="flex-1 relative flex items-center justify-center">
