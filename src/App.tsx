@@ -3053,7 +3053,7 @@ function RecordingsPage({
                     />
                     {/* Download button */}
                     <a
-                      href={rec.downloadUrl || rec.download_url}
+                      href={`${rec.downloadUrl || rec.download_url}?download=`}
                       download={rec.fileName || rec.filename || `recording-${rec.id}.webm`}
                       target="_blank"
                       rel="noopener noreferrer"
