@@ -1,0 +1,6 @@
+{
+  "name": "Resolve",
+  "description": "Comprehensive browser-based offline-capable customer support video platform featuring live webcam feeds, real-time Socket.IO chat, screen-sharing simulations, and session audit trails.",
+  "requestFramePermissions": ["camera", "microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

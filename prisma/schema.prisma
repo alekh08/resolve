@@ -1,0 +1,92 @@
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id        String    @id @default(uuid())
+  email     String    @unique
+  password  String
+  role      String    // "AGENT" | "ADMIN"
+  createdAt DateTime  @default(now())
+  sessions  Session[]
+}
+
+model Session {
+  id           String        @id @default(uuid())
+  title        String?
+  token        String        @unique // Secure invite token
+  status       String        // "PENDING" | "ACTIVE" | "COMPLETED"
+  agentId      String
+  agent        User          @relation(fields: [agentId], references: [id])
+  customerName String?
+  createdAt    DateTime      @default(now())
+  startedAt    DateTime?
+  endedAt      DateTime?
+  participants Participant[]
+  messages     Message[]
+  attachments  Attachment[]
+  recordings   Recording[]
+  eventLogs    EventLog[]
+}
+
+model Participant {
+  id        String    @id @default(uuid())
+  sessionId String
+  session   Session   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  role      String    // "AGENT" | "CUSTOMER"
+  name      String
+  joinedAt  DateTime  @default(now())
+  leftAt    DateTime?
+}
+
+model Message {
+  id        String   @id @default(uuid())
+  sessionId String
+  session   Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  senderId  String   // User ID or "CUSTOMER"
+  senderName String
+  senderRole String  // "AGENT" | "CUSTOMER" | "SYSTEM"
+  text      String
+  createdAt DateTime @default(now())
+}
+
+model Attachment {
+  id        String   @id @default(uuid())
+  sessionId String
+  session   Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  senderName String
+  senderRole String  // "AGENT" | "CUSTOMER"
+  fileName  String
+  fileSize  Int
+  fileType  String
+  fileUrl   String   // Internal or relative URL to download files
+  createdAt DateTime @default(now())
+}
+
+model Recording {
+  id          String    @id @default(uuid())
+  sessionId   String
+  session     Session   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  status      String    // "Recording" | "Processing" | "Ready"
+  startedAt   DateTime  @default(now())
+  endedAt     DateTime?
+  durationSec Int?
+  fileName    String?
+  fileSize    Int?
+  downloadUrl String?
+  uploadedBy  String?
+}
+
+model EventLog {
+  id        String   @id @default(uuid())
+  sessionId String
+  session   Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  type      String   // "SESSION_CREATED" | "PARTICIPANT_JOINED" | "PARTICIPANT_LEFT" | "RECORDING_STARTED" | "RECORDING_STOPPED" | "SESSION_ENDED"
+  detail    String
+  timestamp DateTime @default(now())
+}
