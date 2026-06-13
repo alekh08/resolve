@@ -1253,6 +1253,7 @@ function SessionRoomPage({
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const videoContainerRef = useRef<HTMLDivElement>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
+  const iceCandidateQueueRef = useRef<RTCIceCandidateInit[]>([]);
   
   const [isFullscreen, setIsFullscreen] = useState(false);
   const audioAnalyserRef = useRef<AnalyserNode | null>(null);
@@ -1355,7 +1356,7 @@ function SessionRoomPage({
       }
 
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: mode },
+        video: mode ? { facingMode: { ideal: mode } } : true,
         audio: true
       });
 
@@ -1644,6 +1645,9 @@ function SessionRoomPage({
         }
         setWebrtcState('connecting');
         await pc.setRemoteDescription(new RTCSessionDescription(offer));
+        iceCandidateQueueRef.current.forEach(c => pc.addIceCandidate(new RTCIceCandidate(c)).catch(console.error));
+        iceCandidateQueueRef.current = [];
+        
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
         socket.emit('webrtc-answer', { sessionId, answer });
@@ -1656,6 +1660,8 @@ function SessionRoomPage({
       try {
         if (peerConnectionRef.current) {
           await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(answer));
+          iceCandidateQueueRef.current.forEach(c => peerConnectionRef.current!.addIceCandidate(new RTCIceCandidate(c)).catch(console.error));
+          iceCandidateQueueRef.current = [];
         }
       } catch (err) {
         console.error('[WebRTC] Failed to handle answer:', err);
@@ -1665,7 +1671,11 @@ function SessionRoomPage({
     socket.on('webrtc-ice-candidate', async ({ candidate }: { candidate: RTCIceCandidateInit }) => {
       try {
         if (peerConnectionRef.current && candidate) {
-          await peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(candidate));
+          if (peerConnectionRef.current.remoteDescription) {
+            await peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(candidate));
+          } else {
+            iceCandidateQueueRef.current.push(candidate);
+          }
         }
       } catch (err) {
         console.error('[WebRTC] Failed to add ICE candidate:', err);
