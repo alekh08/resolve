@@ -1764,7 +1764,58 @@ function SessionRoomPage({
   // Support Recording
   const startRecording = async () => {
     try {
-      let streamToRecord = remoteStream || localStream;
+      let streamToRecord: MediaStream | null = null;
+      let animationFrameId: number | null = null;
+      let recAudioCtx: AudioContext | null = null;
+
+      if (localStream && remoteStream) {
+        // Composite both streams into one video!
+        const compositeCanvas = document.createElement('canvas');
+        compositeCanvas.width = 1280;
+        compositeCanvas.height = 720;
+        const ctx = compositeCanvas.getContext('2d');
+        
+        const drawFrame = () => {
+          if (!ctx) return;
+          ctx.fillStyle = '#1c1917'; // dark background
+          ctx.fillRect(0, 0, compositeCanvas.width, compositeCanvas.height);
+          
+          // Draw remote video (Customer) full background
+          if (remoteVideoRef.current && remoteVideoRef.current.readyState >= 2) {
+            ctx.drawImage(remoteVideoRef.current, 0, 0, 1280, 720);
+          }
+          
+          // Draw local video (Agent) Picture-in-Picture bottom right
+          if (localVideoRef.current && localVideoRef.current.readyState >= 2) {
+            ctx.drawImage(localVideoRef.current, 1280 - 320 - 40, 720 - 240 - 40, 320, 240);
+          }
+          
+          animationFrameId = requestAnimationFrame(drawFrame);
+        };
+        drawFrame();
+        
+        const canvasStream = compositeCanvas.captureStream(30);
+        
+        // Mix Audio from both
+        recAudioCtx = new window.AudioContext();
+        const dest = recAudioCtx.createMediaStreamDestination();
+        
+        if (localStream.getAudioTracks().length > 0) {
+          recAudioCtx.createMediaStreamSource(localStream).connect(dest);
+        }
+        if (remoteStream.getAudioTracks().length > 0) {
+          recAudioCtx.createMediaStreamSource(remoteStream).connect(dest);
+        }
+        
+        streamToRecord = new MediaStream([
+          ...canvasStream.getVideoTracks(),
+          ...dest.stream.getAudioTracks()
+        ]);
+      } else {
+        // Fallback to whichever is available
+        streamToRecord = remoteStream || localStream;
+      }
+
       if (!streamToRecord) {
         try {
           streamToRecord = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
@@ -1819,6 +1870,8 @@ function SessionRoomPage({
             clearInterval(recordingTimerIntervalRef.current);
             recordingTimerIntervalRef.current = null;
           }
+          if (animationFrameId) cancelAnimationFrame(animationFrameId);
+          if (recAudioCtx) recAudioCtx.close().catch(e => console.error(e));
 
           // Compile WebM blob
           const blob = new Blob(recordingChunksRef.current, { type: 'video/webm' });
