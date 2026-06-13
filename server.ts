@@ -730,22 +730,27 @@ io.on('connection', (socket) => {
 
     // 30s reconnect grace window: silently rejoin if within the window
     const reconnectKey = `${sessionId}:${name}`;
+    let isSilentRejoin = false;
+    
     if (reconnectTimeouts.has(reconnectKey)) {
       clearTimeout(reconnectTimeouts.get(reconnectKey)!);
       reconnectTimeouts.delete(reconnectKey);
       console.log(`📡 [Socket] ${name} reconnected within grace window — silent rejoin`);
-      return;
+      isSilentRejoin = true;
     }
 
     console.log(`📡 [Socket] ${role} (${name}) joined room: ${sessionId}`);
 
     try {
+      // Send existing participants to the joining client
+      const existingParticipants = await prisma.participant.findMany({ where: { sessionId } });
+      socket.emit('room-info', { participants: existingParticipants });
       // Dedup: skip DB insert if same participant joined within last 60 seconds
       const recentJoin = await prisma.participant.findFirst({
         where: { sessionId, name, joinedAt: { gte: new Date(Date.now() - 60000) } },
       });
 
-      if (!recentJoin) {
+      if (!recentJoin && !isSilentRejoin) {
         await prisma.participant.create({
           data: { sessionId, role, name, joinedAt: new Date() },
         });

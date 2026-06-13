@@ -1516,14 +1516,24 @@ function SessionRoomPage({
     const socket = io();
     socketRef.current = socket;
 
-    socket.emit('join-room', {
-      sessionId,
-      name: userName,
-      role: userRole,
+    socket.on('connect', () => {
+      socket.emit('join-room', {
+        sessionId,
+        name: userName,
+        role: userRole,
+      });
     });
 
     // Populate current participant list locally
     setParticipants([{ id: `me-${Date.now()}`, name: userName, role: userRole }]);
+
+    socket.on('room-info', ({ participants: existing }) => {
+      setParticipants((prev) => {
+        const map = new Map(prev.map(p => [p.name, p]));
+        existing.forEach((p: any) => map.set(p.name, p));
+        return Array.from(map.values());
+      });
+    });
 
     socket.on('participant-joined', async (part) => {
       setParticipants((prev) => {
