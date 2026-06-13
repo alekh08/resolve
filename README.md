@@ -1,5 +1,7 @@
 # Resolve — Customer Support Video Platform
 
+**[🎥 Watch the Full Demo Video Here](https://drive.google.com/file/d/1tS4NXhVa8ooH1xW5CQmGBLfE-DylFn3d/view?usp=sharing)**
+
 A browser-based, self-hosted customer support video platform designed for direct support-agent-to-customer sessions. Built for high reliability during live demonstrations and offline-resilience, Featuring real-time audiovisual streams, desktop screen-sharing, instant textual messaging, secure file transfers, system recording, and comprehensive operational dashboards.
 
 ## 🚀 Key Features
@@ -73,6 +75,7 @@ The server will run on standard production **Port 3000**, serving the React stat
 
 ## ⚠️ Known Limitations
 
+- **Media Routing / SFU Constraints**: While the application utilizes a custom, self-hosted Socket.IO signaling server to completely avoid third-party APIs (satisfying the hackathon constraint), the actual video media transport currently falls back to direct peer-to-peer WebRTC connections. To strictly enforce server-only media routing, an open-source Selective Forwarding Unit (SFU) like LiveKit or Mediasoup must be installed. This was omitted from the live deployment because Render's free web tier does not support the complex UDP port configurations required to host a dedicated video routing server.
 - **WebRTC Connection on Restricted Networks**: The peer-to-peer video connection might fail on strictly restricted corporate networks or VPNs that completely block standard UDP STUN/TURN traversal.
 - **Recording Generation Interruption**: Video recordings of support calls are compiled in the client browser and uploaded upon completion. Navigating away from the browser, refreshing, or closing the tab *before* clicking "Stop Recording" and letting the upload finish will result in the recording getting stuck in the `PROCESSING` state permanently.
 - **1-on-1 Design Constraint**: The application architecture is designed strictly for 1-on-1 support sessions (1 Agent to 1 Customer). Joining multiple agents or multiple customers to the exact same room may cause unpredictable WebRTC renegotiation behavior.
