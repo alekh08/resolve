@@ -1329,6 +1329,14 @@ function SessionRoomPage({
     fetchSessionInfo();
   }, [sessionId]);
 
+  // Ensure remote video reliably plays when stream updates
+  useEffect(() => {
+    if (remoteVideoRef.current && remoteStream) {
+      remoteVideoRef.current.srcObject = remoteStream;
+      remoteVideoRef.current.play().catch(e => console.warn('Autoplay prevented:', e));
+    }
+  }, [remoteStream]);
+
   // Clean-up Streams on Unmount
   useEffect(() => {
     return () => {
