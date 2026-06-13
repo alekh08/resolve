@@ -1775,7 +1775,7 @@ function SessionRoomPage({
   const startRecording = async () => {
     try {
       let streamToRecord: MediaStream | null = null;
-      let animationFrameId: number | null = null;
+      let intervalId: ReturnType<typeof setInterval> | null = null;
       let recAudioCtx: AudioContext | null = null;
 
       if (localStream && remoteStream) {
@@ -1784,8 +1784,6 @@ function SessionRoomPage({
         compositeCanvas.width = 1280;
         compositeCanvas.height = 720;
         const ctx = compositeCanvas.getContext('2d');
-        
-        let intervalId: ReturnType<typeof setInterval>;
         
         const drawFrame = () => {
           if (!ctx) return;
