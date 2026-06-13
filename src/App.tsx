@@ -1775,24 +1775,24 @@ function SessionRoomPage({
         compositeCanvas.height = 720;
         const ctx = compositeCanvas.getContext('2d');
         
+        let intervalId: ReturnType<typeof setInterval>;
+        
         const drawFrame = () => {
           if (!ctx) return;
           ctx.fillStyle = '#1c1917'; // dark background
           ctx.fillRect(0, 0, compositeCanvas.width, compositeCanvas.height);
           
           // Draw remote video (Customer) full background
-          if (remoteVideoRef.current && remoteVideoRef.current.readyState >= 2) {
+          if (remoteVideoRef.current && remoteVideoRef.current.videoWidth > 0) {
             ctx.drawImage(remoteVideoRef.current, 0, 0, 1280, 720);
           }
           
           // Draw local video (Agent) Picture-in-Picture bottom right
-          if (localVideoRef.current && localVideoRef.current.readyState >= 2) {
+          if (localVideoRef.current && localVideoRef.current.videoWidth > 0) {
             ctx.drawImage(localVideoRef.current, 1280 - 320 - 40, 720 - 240 - 40, 320, 240);
           }
-          
-          animationFrameId = requestAnimationFrame(drawFrame);
         };
-        drawFrame();
+        intervalId = setInterval(drawFrame, 33); // ~30fps
         
         const canvasStream = compositeCanvas.captureStream(30);
         
@@ -1870,7 +1870,7 @@ function SessionRoomPage({
             clearInterval(recordingTimerIntervalRef.current);
             recordingTimerIntervalRef.current = null;
           }
-          if (animationFrameId) cancelAnimationFrame(animationFrameId);
+          if (intervalId) clearInterval(intervalId);
           if (recAudioCtx) recAudioCtx.close().catch(e => console.error(e));
 
           // Compile WebM blob
