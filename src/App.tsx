@@ -2749,7 +2749,7 @@ function HistoryPage() {
 
               <div className="pt-3 border-t border-slate-100 flex justify-end">
                 <a
-                  href={`#/history/${sess.id}`}
+                  href={`#/history-detail/${sess.id}`}
                   className="bg-stone-900 hover:bg-stone-850 text-white font-bold py-2 px-4 rounded-lg text-xs tracking-normal shadow-sm flex items-center gap-1"
                 >
                   <FileText className="w-3.5 h-3.5" />
