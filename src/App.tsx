@@ -2135,9 +2135,62 @@ function SessionRoomPage({
                 </div>
               </div>
             ) : (
-              <div className="absolute inset-0 grid grid-cols-1 md:grid-cols-2 gap-4 p-4">
-                {/* Agent Stream box */}
-                <div className="bg-stone-900 border border-stone-800 rounded-xl overflow-hidden relative flex items-center justify-center shadow">
+              <div className="absolute inset-0 bg-stone-950 overflow-hidden">
+                {/* Remote Participant — Main Background Stream */}
+                <div className="absolute inset-0 flex items-center justify-center z-0">
+                  <video
+                    ref={remoteVideoRef}
+                    autoPlay
+                    playsInline
+                    className={`w-full h-full object-cover ${remoteStream ? 'block' : 'hidden'}`}
+                  />
+                  {!remoteStream && (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center p-4 text-center space-y-4 bg-stone-900">
+                      {participants.length < 2 ? (
+                        <>
+                          <div className="w-6 h-6 border-2 border-slate-500 border-t-white rounded-full animate-spin mx-auto"></div>
+                          <p className="text-sm font-semibold text-slate-300">Waiting for other participant to join...</p>
+                          <p className="text-xs text-slate-500 font-medium">Invitation links can be shared at any time.</p>
+                        </>
+                      ) : (
+                        <>
+                          <div className="w-24 h-24 bg-emerald-500/10 rounded-full border border-emerald-500/35 flex items-center justify-center">
+                            <User className="w-12 h-12 text-emerald-400" />
+                          </div>
+                          <div className="space-y-1">
+                            <p className="text-slate-200 font-bold text-lg">
+                              {participants.find((p) => p.name !== userName)?.name || 'Participant'}
+                            </p>
+                            <p className="text-slate-500 text-xs font-semibold uppercase tracking-wider">
+                              {participants.find((p) => p.name !== userName)?.role || 'CUSTOMER'}
+                            </p>
+                          </div>
+                          <div className={`flex items-center gap-2 text-[10px] font-bold py-1.5 px-4 border rounded-full ${
+                            webrtcState === 'connected' ? 'text-emerald-400 bg-emerald-500/5 border-emerald-500/20' :
+                            webrtcState === 'failed' ? 'text-red-400 bg-red-500/5 border-red-500/20 animate-pulse' :
+                            'text-amber-400 bg-amber-500/5 border-amber-500/20 animate-pulse'
+                          }`}>
+                            <span className="w-2 h-2 rounded-full bg-current"></span>
+                            {webrtcState === 'connected' ? 'VIDEO ACTIVE' :
+                             webrtcState === 'failed' ? 'CONNECTION FAILED — RETRY' :
+                             webrtcState === 'connecting' ? 'ESTABLISHING VIDEO...' : 'WAITING FOR VIDEO...'}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+                  {/* Remote Participant Label */}
+                  <div className="absolute bottom-4 left-4 bg-stone-950/80 backdrop-blur-sm text-xs font-bold text-slate-200 py-1.5 px-3 rounded-lg border border-stone-800 flex items-center gap-2 z-10">
+                    <User className="w-3.5 h-3.5 text-slate-400" />
+                    <span>{participants.find((p) => p.name !== userName)?.name || 'Remote Participant'}</span>
+                    <span className="bg-stone-800 text-slate-400 px-1.5 py-0.5 rounded font-black uppercase text-[9px] tracking-wider">
+                      {participants.find((p) => p.name !== userName)?.role || 'CUSTOMER'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Local Participant (Me) — Floating PiP in bottom right */}
+                <div className="absolute bottom-4 right-4 w-28 h-40 sm:w-44 sm:h-60 bg-stone-900 border border-stone-700/60 rounded-xl overflow-hidden shadow-2xl z-20 flex items-center justify-center transition-all hover:scale-105 group">
                   <video
                     ref={localVideoRef}
                     autoPlay
@@ -2147,79 +2200,20 @@ function SessionRoomPage({
                   />
                   {!cameraOn && (
                     <div className="absolute inset-0 bg-stone-900 flex flex-col items-center justify-center text-slate-500 text-center space-y-1 pointer-events-none z-10">
-                      <VideoOff className="w-10 h-10 mx-auto" />
-                      <p className="text-xs font-semibold">Video Feed Off</p>
+                      <VideoOff className="w-6 h-6 sm:w-8 sm:h-8 mx-auto" />
                     </div>
                   )}
 
-                  <div className="absolute bottom-3 left-3 bg-stone-950/80 backdrop-blur-sm text-[10px] font-bold text-slate-200 py-1 px-2.5 rounded-md border border-stone-800 flex items-center gap-2">
-                    <User className="w-3 h-3 text-slate-300" />
+                  {/* Local Label */}
+                  <div className="absolute bottom-2 left-2 bg-stone-950/80 backdrop-blur-sm text-[8px] sm:text-[9px] font-bold text-slate-200 py-0.5 px-1.5 rounded-md border border-stone-800 flex items-center gap-1 z-10 opacity-70 group-hover:opacity-100 transition-opacity">
                     <span>{userName} (me)</span>
-                    <span className="bg-emerald-500 text-stone-950 px-1 py-0.2 rounded font-black uppercase text-[8px] tracking-wider">{userRole}</span>
                   </div>
 
-                  {/* Audio visualization meter bar */}
-                  <div className="absolute bottom-3 right-3 bg-stone-950/85 py-1 px-2 rounded border border-stone-800 flex items-center gap-1">
-                    <div className="w-1.5 h-3 bg-stone-700 rounded-sm relative overflow-hidden">
+                  {/* Audio visualization meter bar - PiP version */}
+                  <div className="absolute top-2 right-2 bg-stone-950/85 py-0.5 px-1 rounded border border-stone-800 flex items-center gap-1 opacity-70 group-hover:opacity-100 transition-opacity">
+                    <div className="w-1 h-2 sm:h-3 bg-stone-700 rounded-sm relative overflow-hidden">
                       <div className="absolute bottom-0 left-0 right-0 bg-emerald-400 transition-all duration-75" style={{ height: `${audioLevel}%` }}></div>
                     </div>
-                    <span className="text-[9px] font-mono font-black text-slate-400">Audio Level</span>
-                  </div>
-                </div>
-
-                {/* Remote Participant — Real WebRTC Video Stream */}
-                <div className="bg-stone-900 border border-stone-800 rounded-xl overflow-hidden relative flex items-center justify-center shadow">
-                  {/* Real remote video — shown once stream is received */}
-                  <video
-                    ref={remoteVideoRef}
-                    autoPlay
-                    playsInline
-                    className={`w-full h-full object-cover ${remoteStream ? 'block' : 'hidden'}`}
-                  />
-
-                  {/* Overlay: waiting / connecting / avatar placeholder */}
-                  {!remoteStream && (
-                    <div className="absolute inset-0 flex flex-col items-center justify-center p-4 text-center space-y-3">
-                      {participants.length < 2 ? (
-                        <>
-                          <div className="w-4 h-4 border-2 border-slate-500 border-t-white rounded-full animate-spin mx-auto"></div>
-                          <p className="text-xs font-semibold text-slate-400">Waiting for other participant to join...</p>
-                          <p className="text-[10px] text-slate-500 font-medium">Invitation links can be shared at any time.</p>
-                        </>
-                      ) : (
-                        <>
-                          <div className="w-20 h-20 bg-emerald-500/10 rounded-full border border-emerald-500/35 flex items-center justify-center">
-                            <User className="w-10 h-10 text-emerald-400" />
-                          </div>
-                          <div className="space-y-0.5">
-                            <p className="text-slate-200 font-bold text-sm">
-                              {participants.find((p) => p.name !== userName)?.name || 'Participant'}
-                            </p>
-                            <p className="text-slate-500 text-xs font-semibold uppercase tracking-wider">
-                              {participants.find((p) => p.name !== userName)?.role || 'CUSTOMER'}
-                            </p>
-                          </div>
-                          <div className={`flex items-center gap-1.5 text-[10px] font-bold py-1 px-3 border rounded-full ${
-                            webrtcState === 'connected' ? 'text-emerald-400 bg-emerald-500/5 border-emerald-500/20' :
-                            webrtcState === 'failed' ? 'text-red-400 bg-red-500/5 border-red-500/20 animate-pulse' :
-                            'text-amber-400 bg-amber-500/5 border-amber-500/20 animate-pulse'
-                          }`}>
-                            <span className="w-1.5 h-1.5 rounded-full bg-current"></span>
-                            {webrtcState === 'connected' ? 'VIDEO ACTIVE' :
-                             webrtcState === 'failed' ? 'CONNECTION FAILED — RETRY' :
-                             webrtcState === 'connecting' ? 'ESTABLISHING VIDEO...' : 'WAITING FOR VIDEO...'}
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  )}
-
-                  <div className="absolute bottom-3 left-3 bg-stone-950/80 backdrop-blur-sm text-[10px] font-bold text-slate-200 py-1 px-2.5 rounded-md border border-stone-800 flex items-center gap-2">
-                    <User className="w-3 h-3 text-slate-400" />
-                    <span>{participants.find((p) => p.name !== userName)?.name || 'Remote Participant'}</span>
-                    <span className="bg-stone-800 text-slate-400 px-1 py-0.2 rounded font-black uppercase text-[8px] tracking-wider">
-                      {participants.find((p) => p.name !== userName)?.role || 'CUSTOMER'}
-                    </span>
                   </div>
                 </div>
               </div>
