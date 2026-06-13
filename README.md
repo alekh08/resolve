@@ -9,13 +9,13 @@ A browser-based, self-hosted customer support video platform designed for direct
    - **Customer**: No log in required! Instant entrance via safe invite link token, real-time audio/video, text chat, download/upload file attachments.
 
 2. **Audiovisual Calling**:
-   - Powered by **LiveKit OSS** tokens with automatic, feature-rich peer fallback visual engines using standard browser native `getUserMedia` camera/audio capture.
+   - WebRTC powered peer-to-peer visual engine using standard browser native `getUserMedia` camera/audio capture and custom Socket.io signaling.
 
 3. **Secure File sharing**:
    - Multipart file upload engine with express-side validation supporting `.pdf`, `.png`, `.jpg`, `.jpeg`, `.webp`, `.doc`, `.docx`, and `.txt` up to 10MB.
 
 4. **Live Call Recording**:
-   - Event log recording tracing with "Recording", "Processing", and "Ready" statuses and automated metadata processing.
+   - Call recording tracing with "Recording", "Processing", and "Ready" statuses. Recordings are natively compiled by the browser and uploaded to the server seamlessly.
 
 5. **Security & Persistence**:
    - Database operations managed with **Prisma ORM** + local SQLite (for out-of-the-box resilience) or easily swappable to **PostgreSQL**.
@@ -28,39 +28,16 @@ A browser-based, self-hosted customer support video platform designed for direct
 - **Frontend**: React, Vite, TypeScript, Tailwind CSS, Lucide icons
 - **Backend**: Node.js, Express, TypeScript (TSX compilation)
 - **Database**: PostgreSQL (supported) / SQLite (pre-configured) via Prisma ORM
-- **Sockets**: Socket.IO for real-time room streaming and chat
-- **Media**: LiveKit OSS SDK Tokenizers
-
----
-
-## 📁 Repository Layout
-
-```
-├── .env.example            # Environmental variable template
-├── .env                    # Active local environment configurations
-├── prisma/
-│   └── schema.prisma       # Prisma DB model schema
-├── src/
-│   ├── main.tsx            # React application entrypoint
-│   ├── App.tsx             # Interactive Unified Frontend SPA Panels
-│   └── index.css           # Tailwind configurations
-├── server.ts               # Express API and Socket.IO Full-stack Entrypoint
-├── vite.config.ts          # Vite Development server configurations
-├── tsconfig.json           # Typography and typescript configs
-└── package.json            # Script triggers and runtime dependencies
-```
+- **Sockets**: Socket.IO for real-time signaling and chat
 
 ---
 
 ## ⚙️ Environment Configuration
 
-Create a `.env` file in the root directory (handled programmatically by AI Studio):
+Create a `.env` file in the root directory:
 ```env
 DATABASE_URL="file:./dev.db"
 JWT_SECRET="super-secret-resolve-hackathon-token"
-LIVEKIT_API_KEY="devkey"
-LIVEKIT_API_SECRET="secret"
-LIVEKIT_URL="ws://localhost:7800"
 ```
 
 To run in standard PostgreSQL, alter `prisma/schema.prisma` datasource provider to `"postgresql"` and provide the postgres database connection URL.
@@ -69,24 +46,37 @@ To run in standard PostgreSQL, alter `prisma/schema.prisma` datasource provider 
 
 ## 🏃 Setup & Execution
 
-### 1. Generate local Prisma client and DB file:
+### 1. Install Dependencies
+```bash
+npm install
+```
+
+### 2. Generate local Prisma client and DB file
 ```bash
 npx prisma db push
 ```
 
-### 2. Run in development mode:
+### 3. Run in Development Mode
 ```bash
 npm run dev
 ```
-
 Vite will start the client portal on **Port 3000** and programmatically boot the Express Socket.io backend on **Port 5000** in a background worker, managing all proxy routing natively.
 
-### 3. Build & start for production:
+### 4. Build & Start for Production
 ```bash
 npm run build
 npm run start
 ```
 The server will run on standard production **Port 3000**, serving the React statically compiled files from `/dist` and mounting express endpoints simultaneously.
+
+---
+
+## ⚠️ Known Limitations
+
+- **WebRTC Connection on Restricted Networks**: The peer-to-peer video connection might fail on strictly restricted corporate networks or VPNs that completely block standard UDP STUN/TURN traversal.
+- **Recording Generation Interruption**: Video recordings of support calls are compiled in the client browser and uploaded upon completion. Navigating away from the browser, refreshing, or closing the tab *before* clicking "Stop Recording" and letting the upload finish will result in the recording getting stuck in the `PROCESSING` state permanently.
+- **1-on-1 Design Constraint**: The application architecture is designed strictly for 1-on-1 support sessions (1 Agent to 1 Customer). Joining multiple agents or multiple customers to the exact same room may cause unpredictable WebRTC renegotiation behavior.
+- **Ephemeral Storage on PaaS**: By default, the application uses a local SQLite database (`dev.db`) and local file system for uploads. Deploying to ephemeral filesystem environments (like Render or Heroku) without attaching a persistent disk volume will cause chat histories, session data, and video recordings to be wiped on every deployment or server restart.
 
 ---
 
