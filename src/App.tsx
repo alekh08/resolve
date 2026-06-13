@@ -2227,7 +2227,7 @@ function SessionRoomPage({
           </div>
 
           {/* Bottom Audio/Video Call Control Panel */}
-          <div className="bg-stone-900 border-t border-stone-850 p-4 flex flex-wrap items-center justify-between gap-4 rounded-b-2xl h-18 text-white select-none">
+          <div className="bg-stone-900 border-t border-stone-850 p-4 flex flex-wrap items-center justify-center sm:justify-between gap-4 rounded-b-2xl min-h-[72px] text-white select-none">
             
             {/* Audio Toggle / Video Toggle */}
             <div className="flex items-center gap-2">
@@ -2323,26 +2323,28 @@ function SessionRoomPage({
                 </button>
               )}
 
-              {confirmEnd ? (
-                <button
-                  onClick={handleEndSession}
-                  className="bg-red-700 hover:bg-red-650 font-bold text-white px-4 py-2 rounded-lg text-xs flex items-center gap-1.5 transition-all shadow cursor-pointer text-white animate-pulse"
-                  id="btn-end-call-confirm"
-                  title="Click again to end call for everyone"
-                >
-                  <AlertTriangle className="w-4 h-4 text-white" />
-                  End Call? (Click again)
-                </button>
-              ) : (
-                <button
-                  onClick={() => { setConfirmEnd(true); setConfirmLeave(false); }}
-                  className="bg-red-650 hover:bg-red-600 font-bold text-white px-4 py-2 rounded-lg text-xs flex items-center gap-1.5 transition-all shadow cursor-pointer text-white border border-red-750"
-                  id="btn-end-call"
-                  title="Permanently End Call"
-                >
-                  <PhoneOff className="w-4 h-4" />
-                  End Call
-                </button>
+              {userRole === 'AGENT' && (
+                confirmEnd ? (
+                  <button
+                    onClick={handleEndSession}
+                    className="bg-red-700 hover:bg-red-650 font-bold text-white px-4 py-2 rounded-lg text-xs flex items-center gap-1.5 transition-all shadow cursor-pointer text-white animate-pulse"
+                    id="btn-end-call-confirm"
+                    title="Click again to end call for everyone"
+                  >
+                    <AlertTriangle className="w-4 h-4 text-white" />
+                    End Call? (Click again)
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => { setConfirmEnd(true); setConfirmLeave(false); }}
+                    className="bg-red-650 hover:bg-red-600 font-bold text-white px-4 py-2 rounded-lg text-xs flex items-center gap-1.5 transition-all shadow cursor-pointer text-white border border-red-750"
+                    id="btn-end-call"
+                    title="Permanently End Call"
+                  >
+                    <PhoneOff className="w-4 h-4" />
+                    End Call
+                  </button>
+                )
               )}
             </div>
           </div>
